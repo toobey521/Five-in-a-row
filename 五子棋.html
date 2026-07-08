@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>萌子棋 · 五子棋</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;700;900&display=swap');
+body{font-family:'Noto Sans SC',sans-serif;background:linear-gradient(135deg,#e0f7fa,#fce4ec,#fff3e0);min-height:100vh;display:flex;justify-content:center;align-items:center;padding:20px}
+.game-container{max-width:750px;width:100%;background:rgba(255,255,255,.88);backdrop-filter:blur(20px);border-radius:28px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.1),0 0 0 1px rgba(255,255,255,.5)}
+.header{text-align:center;margin-bottom:16px}
+.header h1{font-size:2rem;font-weight:900;background:linear-gradient(135deg,#00bcd4,#e91e63,#ff9800);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:4px}
+.header .sub{font-size:.82rem;color:#999;margin-top:4px}
+.antidote{background:linear-gradient(135deg,#fff3e0,#fce4ec);border-radius:14px;padding:10px 14px;margin-bottom:14px;border:1px solid rgba(255,152,0,.3);font-size:.75rem;color:#e65100;line-height:1.6}
+.antidote strong{color:#c62828}
+.controls{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.controls label{font-size:.82rem;font-weight:700;color:#555}
+.controls select{flex:1;min-width:90px;padding:7px 10px;border-radius:10px;border:2px solid #e0e0e0;font-size:.82rem;background:white;cursor:pointer;font-family:inherit}
+.controls select:focus{border-color:#e91e63;outline:none}
+.btn{padding:7px 16px;border-radius:10px;border:none;font-family:inherit;font-weight:700;font-size:.82rem;cursor:pointer;transition:all .3s;white-space:nowrap}
+.btn-primary{background:linear-gradient(135deg,#00bcd4,#e91e63);color:white;box-shadow:0 4px 15px rgba(233,30,99,.3)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(233,30,99,.4)}
+.btn-secondary{background:#f5f5f5;color:#555;border:1px solid #e0e0e0}
+.btn-secondary:hover{background:#eee}
+.btn-music{width:36px;height:36px;border-radius:50%;border:none;background:#f5f5f5;cursor:pointer;font-size:1rem;display:flex;align-items:center;justify-content:center;transition:all .3s;border:1px solid #e0e0e0}
+.btn-music:hover{background:#eee}
+.board-wrap{position:relative;margin:0 auto;aspect-ratio:1;max-width:520px}
+.board-wrap::before{content:'';position:absolute;top:-6px;left:-6px;right:-6px;bottom:-6px;border-radius:14px;background:linear-gradient(135deg,#00bcd4,#e91e63,#ff9800);opacity:.15;z-index:0}
+#gobanCanvas{display:block;width:100%;height:100%;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.1);position:relative;z-index:1;cursor:pointer}
+.status{text-align:center;margin:12px 0 0;font-size:.88rem;color:#666;min-height:26px;font-weight:500}
+.footer{text-align:center;margin-top:12px;font-size:.68rem;color:#bbb}
+@media(max-width:480px){.game-container{padding:14px;border-radius:18px}.header h1{font-size:1.4rem}.controls{gap:5px}.controls select{min-width:70px;padding:5px 8px;font-size:.75rem}.btn{padding:5px 12px;font-size:.75rem}}
+</style>
+</head>
+<body>
+<div class="game-container">
+  <div class="header"><h1>⚫ 萌 子 棋 ⚪</h1><div class="sub">🐣 可爱五子棋 · 先连五子者胜 🐥</div></div>
+  <div class="antidote">
+    <strong>⚠️ 防沉迷/健康系统提醒</strong><br>
+    🕐 合理控制游戏时间，避免沉迷游戏。<br>
+    👶 未成年人用户：每日22时至次日8时不得登录游戏，法定节假日每日累计不超过3小时，其他时间每日不超过1.5小时。<br>
+    📛 本游戏要求实名认证，未实名账号无法进行游戏。<br>
+    🧘 请合理安排时间，享受健康生活。适度游戏益脑，沉迷游戏伤身。
+  </div>
+  <div class="controls">
+    <label>🤖 难度</label>
+    <select id="levelSelect">
+      <option value="1">🐣 初级</option><option value="2">🐰 中级</option>
+      <option value="3" selected>🦊 高级</option><option value="4">🐯 大师级</option><option value="5">🐉 骨灰级</option>
+    </select>
+    <button class="btn btn-primary" onclick="newGame()">🔄 新游戏</button>
+    <button class="btn btn-secondary" onclick="undoMove()">↩ 悔棋</button>
+    <button class="btn-music" id="musicBtn" onclick="toggleMusic()">🔇</button>
+  </div>
+  <div class="board-wrap"><canvas id="gobanCanvas" width="520" height="520"></canvas></div>
+  <div class="status" id="status">点击"新游戏"开始 🎮</div>
+  <div class="footer">❤️ 萌子棋 · 适度娱乐 健康生活 ❤️</div>
+</div>
+<script>
+// ===== 五子棋引擎 =====
+const canvas=document.getElementById('gobanCanvas'),ctx=canvas.getContext('2d');
+const statusEl=document.getElementById('status');
+const S=canvas.width,N=15,CELL=S/N,HALF=CELL/2;
+let board=[],turn='b',gameOver=false,thinking=false,movesHistory=[],boardHistory=[],level=3,soundOn=false;
+const EMPTY=0,BLACK=1,WHITE=2;
+
+function initBoard(){return Array.from({length:N},()=>Array(N).fill(EMPTY));}
+function cloneBoard(b){return b.map(r=>[...r]);}
+function inB(x,y){return x>=0&&x<N&&y>=0&&y<N;}
+
+// 方向向量
+const DIRS=[[1,0],[0,1],[1,1],[1,-1]];
+
+// 检查是否五子连珠
+function checkWin(b,x,y,c){
+  for(const[dx,dy]of DIRS){
+    let cnt=1;
+    for(let i=1;i<5;i++){const nx=x+dx*i,ny=y+dy*i;if(inB(nx,ny)&&b[ny][nx]===c)cnt++;else break;}
+    for(let i=1;i<5;i++){const nx=x-dx*i,ny=y-dy*i;if(inB(nx,ny)&&b[ny][nx]===c)cnt++;else break;}
+    if(cnt>=5)return true;
+  }
+  return false;
+}
+
+// ===== AI 评估 =====
+// 对每个位置打分
+function evaluatePos(b,x,y,c){
+  let score=0;
+  for(const[dx,dy]of DIRS){
+    let cnt=1,openEnds=0,blocked=0;
+    // 正方向
+    let i=1;while(true){
+      const nx=x+dx*i,ny=y+dy*i;
+      if(!inB(nx,ny)){blocked++;break;}
+      if(b[ny][nx]===c)cnt++;
+      else if(b[ny][nx]===EMPTY){openEnds++;break;}
+      else{blocked++;break;}
+      i++;
+    }
+    // 反方向
+    i=1;while(true){
+      const nx=x-dx*i,ny=y-dy*i;
+      if(!inB(nx,ny)){blocked++;break;}
+      if(b[ny][nx]===c)cnt++;
+      else if(b[ny][nx]===EMPTY){openEnds++;break;}
+      else{blocked++;break;}
+      i++;
+    }
+    // 评分
+    if(cnt>=5)score+=100000;
+    else if(cnt===4){
+      if(openEnds===2)score+=50000;  // 活四
+      else if(openEnds===1)score+=5000; // 冲四
+    }else if(cnt===3){
+      if(openEnds===2)score+=5000;   // 活三
+      else if(openEnds===1)score+=500; // 眠三
+    }else if(cnt===2){
+      if(openEnds===2)score+=500;    // 活二
+      else if(openEnds===1)score+=50;
+    }else if(cnt===1&&openEnds===2)score+=10;
+  }
+  return score;
+}
+
+// 评价整个棋盘
+function evalBoard(b,c){
+  const opp=c===BLACK?WHITE:BLACK;
+  let sc=0;
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+    if(b[y][x]===c)sc+=evaluatePos(b,x,y,c);
+    else if(b[y][x]===opp)sc-=evaluatePos(b,x,y,opp)*1.1;
+  }
+  return sc;
+}
+
+// 获取候选位置（有子的邻居位置）
+function getCandidates(b){
+  const cand=[];
+  const visited=new Set();
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+    if(b[y][x]!==EMPTY){
+      for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
+        const nx=x+dx,ny=y+dy;
+        if(inB(nx,ny)&&b[ny][nx]===EMPTY&&!visited.has(ny*N+nx)){
+          visited.add(ny*N+nx);
+          // 快速估价排序
+          let sc=0;
+          for(const c of[BLACK,WHITE])sc+=evaluatePos(b,nx,ny,c);
+          cand.push({x:nx,y:ny,score:sc});
+        }
+      }
+    }
+  }
+  // 如果棋盘为空，下中间
+  if(cand.length===0&&b[7][7]===EMPTY)cand.push({x:7,y:7,score:0});
+  cand.sort((a,b)=>b.score-a.score);
+  return cand;
+}
+
+// Minimax + Alpha-Beta
+function mini(b,d,alpha,beta,isMax,c){
+  if(d===0)return{score:evalBoard(b,c),move:null};
+  const cand=getCandidates(b);
+  if(cand.length===0)return{score:0,move:null};
+  const opp=c===BLACK?WHITE:BLACK;
+  let best=null;
+  if(isMax){
+    let ms=-Infinity;
+    for(const pos of cand.slice(0,Math.min(15,cand.length))){
+      const nb=cloneBoard(b);nb[pos.y][pos.x]=c;
+      if(checkWin(nb,pos.x,pos.y,c))return{score:100000+d,move:pos};
+      const r=mini(nb,d-1,alpha,beta,false,opp);
+      if(r.score>ms){ms=r.score;best=pos;}
+      alpha=Math.max(alpha,r.score);
+      if(beta<=alpha)break;
+    }
+    return{score:ms,move:best};
+  }else{
+    let ms=Infinity;
+    for(const pos of cand.slice(0,Math.min(15,cand.length))){
+      const nb=cloneBoard(b);nb[pos.y][pos.x]=c;
+      if(checkWin(nb,pos.x,pos.y,c))return{score:-100000-d,move:pos};
+      const r=mini(nb,d-1,alpha,beta,true,opp);
+      if(r.score<ms){ms=r.score;best=pos;}
+      beta=Math.min(beta,r.score);
+      if(beta<=alpha)break;
+    }
+    return{score:ms,move:best};
+  }
+}
+
+const AI_DEPTH=[0,1,2,3,4,5]; // 下标对应等级
+
+function aiMove(b,c,lvl){
+  const depth=AI_DEPTH[lvl]||3;
+  const cand=getCandidates(b);
+  if(cand.length===0)return null;
+  
+  // 初级随机
+  if(lvl===1&&Math.random()<.4){
+    const safe=cand.filter(p=>!wouldLose(b,p.x,p.y,c));
+    if(safe.length>0)return safe[Math.floor(Math.random()*safe.length)];
+    return cand[Math.floor(Math.random()*cand.length)];
+  }
+  // 中级
+  if(lvl===2&&Math.random()<.15){
+    return cand[Math.floor(Math.random()*Math.min(5,cand.length))];
+  }
+  
+  // 直接检查是否有一步必胜
+  for(const pos of cand){
+    const nb=cloneBoard(b);nb[pos.y][pos.x]=c;
+    if(checkWin(nb,pos.x,pos.y,c))return pos;
+  }
+  // 检查对手是否有一步必胜，需堵
+  const opp=c===BLACK?WHITE:BLACK;
+  for(const pos of cand){
+    const nb=cloneBoard(b);nb[pos.y][pos.x]=opp;
+    if(checkWin(nb,pos.x,pos.y,c))return pos;
+  }
+  
+  const r=mini(b,depth,c==='w',-Infinity,Infinity,true,c);
+  return r.move||cand[0];
+}
+
+function wouldLose(b,x,y,c){
+  const nb=cloneBoard(b);nb[y][x]=c;
+  const opp=c===BLACK?WHITE:BLACK;
+  for(let yy=0;yy<N;yy++)for(let xx=0;xx<N;xx++){
+    if(nb[yy][xx]===EMPTY){nb[yy][xx]=opp;if(checkWin(nb,xx,yy,opp))return true;nb[yy][xx]=EMPTY;}
+  }
+  return false;
+}
+
+// ===== 绘制 =====
+function drawBoard(){
+  ctx.clearRect(0,0,S,S);
+  // 木质棋盘背景
+  const bg=ctx.createLinearGradient(0,0,S,S);
+  bg.addColorStop(0,'#f5d6a8');bg.addColorStop(.5,'#e8c48a');bg.addColorStop(1,'#dbb677');
+  ctx.fillStyle=bg;ctx.fillRect(0,0,S,S);
+  
+  // 网格
+  ctx.strokeStyle='#b8956a';ctx.lineWidth=1.2;
+  for(let i=0;i<N;i++){
+    ctx.beginPath();ctx.moveTo(HALF,HALF+i*CELL);ctx.lineTo(S-HALF,HALF+i*CELL);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(HALF+i*CELL,HALF);ctx.lineTo(HALF+i*CELL,S-HALF);ctx.stroke();
+  }
+  // 星位
+  const stars=[[3,3],[3,7],[3,11],[7,3],[7,7],[7,11],[11,3],[11,7],[11,11]];
+  ctx.fillStyle='#b8956a';
+  for(const[sx,sy]of stars){ctx.beginPath();ctx.arc(HALF+sx*CELL,HALF+sy*CELL,4,0,Math.PI*2);ctx.fill();}
+  
+  // 棋子
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+    if(board[y][x]!==EMPTY)drawStone(x,y,board[y][x]);
+  }
+  // 最后一步标记
+  if(movesHistory.length>0){
+    const l=movesHistory[movesHistory.length-1];
+    const cx=HALF+l.x*CELL,cy=HALF+l.y*CELL;
+    ctx.fillStyle='rgba(255,255,0,.5)';
+    ctx.beginPath();ctx.arc(cx,cy,4,0,Math.PI*2);ctx.fill();
+  }
+}
+
+function drawStone(x,y,c){
+  const cx=HALF+x*CELL,cy=HALF+y*CELL,r=CELL*.43;
+  ctx.save();
+  ctx.shadowColor='rgba(0,0,0,.15)';ctx.shadowBlur=4;ctx.shadowOffsetY=2;
+  
+  if(c===BLACK){
+    const g=ctx.createRadialGradient(cx-r*.3,cy-r*.3,0,cx,cy,r);
+    g.addColorStop(0,'#5d5d5d');g.addColorStop(.4,'#333');g.addColorStop(1,'#111');
+    ctx.fillStyle=g;
+    ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();
+    // 高光
+    ctx.shadowBlur=0;ctx.shadowOffsetY=0;
+    ctx.fillStyle='rgba(255,255,255,.25)';
+    ctx.beginPath();ctx.arc(cx-r*.2,cy-r*.25,r*.35,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.12)';
+    ctx.beginPath();ctx.arc(cx-r*.1,cy-r*.15,r*.2,0,Math.PI*2);ctx.fill();
+    // 表情
+    ctx.fillStyle='white';
+    ctx.beginPath();ctx.arc(cx-r*.2,cy+r*.05,3.5,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(cx+r*.2,cy+r*.05,3.5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='black';
+    ctx.beginPath();ctx.arc(cx-r*.2,cy+r*.02,1.8,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(cx+r*.2,cy+r*.02,1.8,0,Math.PI*2);ctx.fill();
+    // 微笑
+    ctx.strokeStyle='white';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(cx,cy+r*.2,r*.12,.1,Math.PI-.1);ctx.stroke();
+  }else{
+    const g=ctx.createRadialGradient(cx-r*.3,cy-r*.3,0,cx,cy,r);
+    g.addColorStop(0,'#ffffff');g.addColorStop(.6,'#f0f0f0');g.addColorStop(1,'#ddd');
+    ctx.fillStyle=g;
+    ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();
+    ctx.shadowBlur=0;ctx.shadowOffsetY=0;
+    // 高光
+    ctx.fillStyle='rgba(255,255,255,.8)';
+    ctx.beginPath();ctx.arc(cx-r*.25,cy-r*.3,r*.28,0,Math.PI*2);ctx.fill();
+    // 表情 - 粉色腮红
+    ctx.fillStyle='#ff8a80';
+    ctx.globalAlpha=.3;
+    ctx.beginPath();ctx.arc(cx-r*.28,cy+r*.12,5,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(cx+r*.28,cy+r*.12,5,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;
+    ctx.fillStyle='#555';
+    ctx.beginPath();ctx.arc(cx-r*.2,cy+r*.05,3,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(cx+r*.2,cy+r*.05,3,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ff4081';
+    ctx.beginPath();ctx.arc(cx-r*.18,cy+r*.03,1.5,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(cx+r*.18,cy+r*.03,1.5,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#ff4081';ctx.lineWidth=1.8;
+    ctx.beginPath();ctx.arc(cx,cy+r*.22,r*.14,.1,Math.PI-.1);ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ===== 游戏逻辑 =====
+function newGame(){
+  board=initBoard();turn='b';gameOver=false;thinking=false;
+  movesHistory=[];boardHistory=[];
+  updateStatus('黑棋先走 🖤');drawBoard();
+}
+
+function undoMove(){
+  if(thinking||gameOver||movesHistory.length<2)return;
+  movesHistory.pop();boardHistory.pop();
+  movesHistory.pop();boardHistory.pop();
+  if(boardHistory.length>0)board=cloneBoard(boardHistory[boardHistory.length-1]);
+  else board=initBoard();
+  turn='b';gameOver=false;
+  updateStatus('悔棋成功 😊');drawBoard();
+}
+
+function handleClick(e){
+  if(thinking||gameOver)return;
+  const rect=canvas.getBoundingClientRect();
+  const x=Math.round((e.clientX-rect.left)*N/rect.width-.5);
+  const y=Math.round((e.clientY-rect.top)*N/rect.height-.5);
+  if(!inB(x,y)||board[y][x]!==EMPTY)return;
+  
+  boardHistory.push(cloneBoard(board));
+  board[y][x]=BLACK;movesHistory.push({x,y,c:BLACK});
+  drawBoard();
+  
+  if(checkWin(board,x,y,BLACK)){updateStatus('🎉 你赢了！好厉害！');gameOver=true;return;}
+  if(checkDraw()){updateStatus('🤝 平局！');gameOver=true;return;}
+  
+  updateStatus('AI思考中... 🤔');thinking=true;
+  setTimeout(()=>{
+    const ai=aiMove(board,WHITE,level);
+    if(ai){
+      boardHistory.push(cloneBoard(board));
+      board[ai.y][ai.x]=WHITE;movesHistory.push({x:ai.x,y:ai.y,c:WHITE});
+      drawBoard();
+      if(checkWin(board,ai.x,ai.y,WHITE)){updateStatus('😭 AI赢了！再来一局！');gameOver=true;}
+      else if(checkDraw()){updateStatus('🤝 平局！');gameOver=true;}
+      else updateStatus('轮到你了 🖤');
+    }else{
+      updateStatus('🤝 平局！');gameOver=true;
+    }
+    thinking=false;
+  },200+level*200);
+}
+
+function checkDraw(){
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++)if(board[y][x]===EMPTY)return false;
+  return true;
+}
+
+function updateStatus(s){statusEl.textContent=s;}
+
+// ===== 音乐 =====
+let audioCtx,musicPlaying=false,gainNode,oscNodes=[];
+function initAudio(){
+  if(audioCtx)return;
+  audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  gainNode=audioCtx.createGain();gainNode.gain.value=.05;
+  gainNode.connect(audioCtx.destination);
+}
+function toggleMusic(){
+  initAudio();musicPlaying=!musicPlaying;
+  document.getElementById('musicBtn').textContent=musicPlaying?'🔊':'🔇';
+  if(musicPlaying)playMusic();else stopMusic();
+}
+function stopMusic(){
+  for(const o of oscNodes){try{o.stop();o.disconnect();}catch(e){}}
+  oscNodes=[];if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume();
+}
+function playMusic(){
+  if(!musicPlaying||!audioCtx)return;stopMusic();
+  const melody=[262,294,330,349,392,440,494,523,523,494,440,392,349,330,294,262];
+  const nd=.35;
+  function pn(f,d,v=.05){
+    const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+    o.type='triangle';o.frequency.value=f;
+    g.gain.setValueAtTime(0,audioCtx.currentTime+d);
+    g.gain.linearRampToValueAtTime(v,audioCtx.currentTime+d+.02);
+    g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+d+nd*.9);
+    o.connect(g);g.connect(gainNode);o.start(audioCtx.currentTime+d);o.stop(audioCtx.currentTime+d+nd);
+    oscNodes.push(o);
+  }
+  let t=0;
+  for(let i=0;i<melody.length;i++){pn(melody[i],t);t+=nd;}
+  if(musicPlaying)setTimeout(playMusic,t*1000+500);
+}
+
+// ===== 初始化 =====
+canvas.addEventListener('click',handleClick);
+document.getElementById('levelSelect').addEventListener('change',function(){
+  level=parseInt(this.value);
+  updateStatus(`已切换到 ${this.options[this.selectedIndex].text} 难度 🎯`);
+});
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden&&musicPlaying)audioCtx&&audioCtx.suspend();
+  else if(!document.hidden&&musicPlaying)audioCtx&&audioCtx.resume();
+});
+newGame();
+console.log('⚫⚪ 萌子棋已加载！');
+</script>
+</body>
+</html>
